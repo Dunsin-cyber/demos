@@ -1,17 +1,16 @@
-use ark_core::script::{multisig_3_of_3_script, tr_script_pubkey};
+use ark_core::script::multisig_3_of_3_script;
 use ark_core::send::{
     build_offchain_transactions, sign_ark_transaction, sign_checkpoint_transaction, SendReceiver,
     VtxoInput,
 };
 use ark_core::server::GetVtxosRequest;
-use ark_core::{ArkAddress, UNSPENDABLE_KEY};
+use ark_core::Vtxo;
 use ark_rest::Client;
 use bip39::Mnemonic;
 use bitcoin::base64::{engine::general_purpose::STANDARD, Engine};
-use bitcoin::key::{Keypair, PublicKey, Secp256k1};
+use bitcoin::key::{Keypair, Secp256k1};
 use bitcoin::opcodes::all::{OP_CHECKSIG, OP_CHECKSIGVERIFY, OP_CLTV, OP_CSV, OP_DROP};
 use bitcoin::script::Builder;
-use bitcoin::taproot::{LeafVersion, TaprootBuilder};
 use bitcoin::{
     absolute::LockTime,
     bip32::{DerivationPath, Xpriv},
@@ -117,29 +116,19 @@ async fn main() -> anyhow::Result<()> {
         csv_multisig_script(server_info.unilateral_exit_delay, alice_xonly, bob_xonly),
     ];
 
-    // Build TaprootSpendInfo matching the TypeScript VtxoScript tree layout.
-    let unspendable_key: PublicKey = UNSPENDABLE_KEY.parse()?;
-    let (unspendable_xonly, _) = unspendable_key.inner.x_only_public_key();
+    // Build the Taproot tree matching the TypeScript VtxoScript tree layout.
+    let vtxo = Vtxo::new_with_custom_scripts(
+        &secp,
+        server_xonly,
+        arbiter_xonly,
+        scripts.clone(),
+        server_info.unilateral_exit_delay,
+        network,
+    )
+    .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let ordered: [(u8, &ScriptBuf); 5] = [
-        (3, &scripts[3]), // path3: players without arbiter
-        (3, &scripts[2]), // path2: CLTV arbiter sweep
-        (2, &scripts[4]), // path4: unilateral exit
-        (2, &scripts[1]), // path1: player B paid out
-        (2, &scripts[0]), // path0: player A paid out
-    ];
-    let mut builder = TaprootBuilder::new();
-    for (depth, script) in ordered.iter() {
-        builder = builder
-            .add_leaf(*depth, (*script).clone())
-            .map_err(|e| anyhow::anyhow!("add_leaf error: {e}"))?;
-    }
-    let spend_info = builder
-        .finalize(&secp, unspendable_xonly)
-        .map_err(|_| anyhow::anyhow!("failed to finalize taproot tree"))?;
-
-    let script_pubkey = tr_script_pubkey(&spend_info);
-    let address = ArkAddress::new(network, server_xonly, spend_info.output_key());
+    let script_pubkey = vtxo.script_pubkey();
+    let address = vtxo.to_ark_address();
 
     println!("Generated address: {}", address.encode());
     println!("Expiry (absolute timelock): {}", expiry.to_consensus_u32());
@@ -185,9 +174,9 @@ async fn main() -> anyhow::Result<()> {
 
         // Build VtxoInputs using the chosen spend script
         let spend_script = scripts[tap_leaf_index].clone();
-        let control_block = spend_info
-            .control_block(&(spend_script.clone(), LeafVersion::TapScript))
-            .ok_or_else(|| anyhow::anyhow!("control block not found for path {tap_leaf_index}"))?;
+        let control_block = vtxo
+            .get_spend_info(spend_script.clone())
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
 
         let vtxo_inputs: Vec<VtxoInput> = vtxos
             .iter()
