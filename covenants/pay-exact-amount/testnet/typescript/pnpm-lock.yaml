@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@arkade-os/sdk':
-        specifier: ^0.4.48
-        version: 0.4.48
+        specifier: ^0.4.66
+        version: 0.4.66
       '@scure/base':
         specifier: ^2.2.0
         version: 2.2.0
 
 packages:
 
-  '@arkade-os/sdk@0.4.48':
-    resolution: {integrity: sha512-g49NyUHCYz3DWMEJFWFdgmkmJJpsjpcrlbFToMowajYkRJvpELjuJh3EkzXVF7C1+W08SkV10NpEfBwUkRJxRg==}
-    engines: {node: '>=22.12.0 <25'}
+  '@arkade-os/sdk@0.4.66':
+    resolution: {integrity: sha512-wSpu22ypIse1YHdPjnOx1XWf7IMi/j5RuZpUHa2QclHs1YkzerS5HqwXTeusiynd3s0V/R9/K7ZZz7yRwkcBhg==}
+    engines: {node: '>=22.12.0 <27'}
     peerDependencies:
       '@react-native-async-storage/async-storage': '>=1.0.0'
       expo: '>=54.0.0'
@@ -174,7 +174,7 @@ packages:
 
 snapshots:
 
-  '@arkade-os/sdk@0.4.48':
+  '@arkade-os/sdk@0.4.66':
     dependencies:
       '@bitcoinerlab/descriptors-scure': 3.1.7
       '@marcbachmann/cel-js': 8.0.0
@@ -193,14 +193,14 @@ snapshots:
       - ecpair
       - utf-8-validate
 
-  '@bitcoinerlab/descriptors-core@3.1.7(@noble/curves@2.0.1)(@noble/hashes@2.2.0)(@scure/base@2.2.0)(@scure/bip32@2.2.0)(@scure/btc-signer@2.2.0)':
+  '@bitcoinerlab/descriptors-core@3.1.7(@noble/curves@2.2.0)(@noble/hashes@2.2.0)(@scure/base@2.2.0)(@scure/bip32@2.2.0)(@scure/btc-signer@2.2.0)':
     dependencies:
       '@bitcoinerlab/miniscript': 2.0.0
       lodash.memoize: 4.1.2
       uint8array-tools: 0.0.9
       varuint-bitcoin: 2.0.0
     optionalDependencies:
-      '@noble/curves': 2.0.1
+      '@noble/curves': 2.2.0
       '@noble/hashes': 2.2.0
       '@scure/base': 2.2.0
       '@scure/bip32': 2.2.0
@@ -208,8 +208,8 @@ snapshots:
 
   '@bitcoinerlab/descriptors-scure@3.1.7':
     dependencies:
-      '@bitcoinerlab/descriptors-core': 3.1.7(@noble/curves@2.0.1)(@noble/hashes@2.2.0)(@scure/base@2.2.0)(@scure/bip32@2.2.0)(@scure/btc-signer@2.2.0)
-      '@noble/curves': 2.0.1
+      '@bitcoinerlab/descriptors-core': 3.1.7(@noble/curves@2.2.0)(@noble/hashes@2.2.0)(@scure/base@2.2.0)(@scure/bip32@2.2.0)(@scure/btc-signer@2.2.0)
+      '@noble/curves': 2.2.0
       '@noble/hashes': 2.2.0
       '@scure/base': 2.2.0
       '@scure/bip32': 2.2.0
