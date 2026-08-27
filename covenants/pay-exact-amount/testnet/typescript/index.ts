@@ -141,6 +141,9 @@ const { arkTx, checkpoints } = buildOffchainTx(
 /** Attach each input's source transaction as its PrevArkTxField, which the emulator requires. */
 for (let i = 0; i < inputs.length; i++) {
   const { txs } = await indexer.getVirtualTxs([inputs[i].txid]);
+  if (!txs[0]) {
+    throw new Error(`indexer returned no virtual tx for input txid ${inputs[i].txid}`);
+  }
   const sourceTx = Transaction.fromPSBT(base64.decode(txs[0])).unsignedTx;
   setArkPsbtField(arkTx, i, PrevArkTxField, sourceTx);
 }
@@ -183,6 +186,7 @@ async function waitFor<T>(
   label: string,
   timeoutMs = 60_000,
 ): Promise<T[]> {
+  console.log(`Waiting for ${label}...`);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const items = await lookup();
