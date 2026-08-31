@@ -2,6 +2,9 @@ import {
   arkade,
   ArkAddress,
   buildOffchainTx,
+  setArkPsbtField,
+  getNetwork,
+  PrevArkTxField,
   EmulatorPacket,
   Extension,
   InMemoryContractRepository,
@@ -65,6 +68,7 @@ const identity = MnemonicIdentity.fromMnemonic(SEED_PHRASE, { isMainnet: false }
 const operator = new RestArkProvider(OPERATOR_URL);
 const indexer = new RestIndexerProvider(OPERATOR_URL);
 const emulator = new RestEmulatorProvider(EMULATOR_URL);
+const network = getNetwork("mutinynet");
 
 const wallet = await Wallet.create({
   identity,
@@ -77,7 +81,13 @@ const wallet = await Wallet.create({
   },
 });
 
-const builder = await ContractBuilder.connect({ identity, arkade: operator, indexer, emulator });
+const builder = await ContractBuilder.connect({
+  identity,
+  arkade: operator,
+  indexer,
+  emulator,
+  network,
+});
 
 /** 2. Instantiate the contract, pinning input 0 to the wallet's witness program. */
 const walletAddress = await wallet.getAddress();
@@ -140,6 +150,16 @@ const { arkTx, checkpoints } = buildOffchainTx(
   builder.checkpoint,
 );
 
+/** Attach each input's source transaction as its PrevArkTxField, which the emulator requires. */
+for (let i = 0; i < inputs.length; i++) {
+  const { txs } = await indexer.getVirtualTxs([inputs[i].txid]);
+  if (!txs[0]) {
+    throw new Error(`indexer returned no virtual tx for input txid ${inputs[i].txid}`);
+  }
+  const sourceTx = Transaction.fromPSBT(base64.decode(txs[0])).unsignedTx;
+  setArkPsbtField(arkTx, i, PrevArkTxField, sourceTx);
+}
+
 /**
  * 5. Submit transaction.
  * Coin A is ours, so we sign both its ark tx input and its checkpoint; the
@@ -157,7 +177,7 @@ const submitted = await emulator.submitTx(
  */
 const txid = Transaction.fromPSBT(base64.decode(submitted.signedArkTx)).id;
 console.log(
-  `Spent ${inputs.length} contract input(s): ${EXPLORER_URL}/tx/${txid}`,
+  `Covenant satisfied: input 0 (coin A) matched the pinned scriptPubKey, spent ${inputs.length} input(s): ${EXPLORER_URL}/tx/${txid}`,
 );
 
 await wallet.dispose();
@@ -182,6 +202,7 @@ async function waitFor<T>(
   label: string,
   timeoutMs = 60_000,
 ): Promise<T[]> {
+  console.log(`Waiting for ${label}...`);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const items = await lookup();

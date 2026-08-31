@@ -2,6 +2,9 @@ import {
   arkade,
   ArkAddress,
   buildOffchainTx,
+  setArkPsbtField,
+  getNetwork,
+  PrevArkTxField,
   EmulatorPacket,
   Extension,
   InMemoryContractRepository,
@@ -64,6 +67,7 @@ const identity = MnemonicIdentity.fromMnemonic(SEED_PHRASE, { isMainnet: false }
 const operator = new RestArkProvider(OPERATOR_URL);
 const indexer = new RestIndexerProvider(OPERATOR_URL);
 const emulator = new RestEmulatorProvider(EMULATOR_URL);
+const network = getNetwork("mutinynet");
 
 const wallet = await Wallet.create({
   identity,
@@ -76,19 +80,43 @@ const wallet = await Wallet.create({
   },
 });
 
-const builder = await ContractBuilder.connect({ identity, arkade: operator, indexer, emulator });
+const builder = await ContractBuilder.connect({
+  identity,
+  arkade: operator,
+  indexer,
+  emulator,
+  network,
+});
 
-/** 2. Fund coin A first and read its outpoint, which the guard pins to. */
+/** 2. Fund coin A first, then derive the checkpoint outpoint the covenant will actually see. */
 const walletAddress = await wallet.getAddress();
+const walletPkScript = ArkAddress.decode(walletAddress).pkScript;
 await fundViaFaucet(walletAddress, DEPOSIT_AMOUNT);
-const [coinA] = await waitFor(() => wallet.getVtxos(), "coin A from the faucet");
+const [coinA] = await waitFor(() => wallet.getVtxos(), "coin A funding from the faucet");
 
-/** 3. Instantiate the contract pinned to coin A's outpoint, then fund and fetch the guard. */
+/** Coin A is a plain wallet coin, spent via its collaborative (forfeit) leaf. */
+const coinAInput = {
+  ...coinA,
+  tapLeafScript: coinA.forfeitTapLeafScript,
+};
+
+/**
+ * Input 0 is coin A's checkpoint, not coin A, so INSPECTINPUTOUTPOINT sees the checkpoint
+ * outpoint. It is deterministic from coin A, so build it here (throwaway outputs) and pin to it.
+ */
+const { checkpoints: [coinACheckpoint] } = buildOffchainTx(
+  [coinAInput],
+  [{ script: walletPkScript, amount: BigInt(coinA.value) }],
+  builder.checkpoint,
+);
+
+/** 3. Instantiate the contract pinned to that checkpoint outpoint, then fund and fetch the guard. */
 const contract = builder.contract(program, {
   operatorPubkey: builder.serverKey,
   /** The covenant reads the txid in internal (reversed) byte order, not display order. */
-  pinnedTxid: hex.decode(coinA.txid).reverse(),
-  pinnedVout: coinA.vout,
+  pinnedTxid: hex.decode(coinACheckpoint.id).reverse(),
+  /** Checkpoint outputs always sit at vout 0. */
+  pinnedVout: 0,
 });
 
 await fundViaFaucet(contract.address, DEPOSIT_AMOUNT);
@@ -99,11 +127,7 @@ const pinInput = contract.vtxoScript.functionByName("pinInput")!;
 
 /** Two PSBT inputs: coin A at index 0 (the inspected coin) and the guard at index 1. */
 const inputs = [
-  {
-    ...coinA,
-    /** Coin A is a plain wallet coin, spent via its collaborative (forfeit) leaf. */
-    tapLeafScript: coinA.forfeitTapLeafScript,
-  },
+  coinAInput,
   {
     txid: guardCoin.txid,
     vout: guardCoin.vout,
@@ -117,7 +141,6 @@ const inputs = [
 
 /** No output rule here, so the whole value goes back to the wallet in one output. */
 const totalValue = BigInt(coinA.value) + BigInt(guardCoin.value);
-const walletPkScript = ArkAddress.decode(walletAddress).pkScript;
 const outputs: any[] = [{ script: walletPkScript, amount: totalValue }];
 
 /**
@@ -139,6 +162,16 @@ const { arkTx, checkpoints } = buildOffchainTx(
   builder.checkpoint,
 );
 
+/** Attach each input's source transaction as its PrevArkTxField, which the emulator requires. */
+for (let i = 0; i < inputs.length; i++) {
+  const { txs } = await indexer.getVirtualTxs([inputs[i].txid]);
+  if (!txs[0]) {
+    throw new Error(`indexer returned no virtual tx for input txid ${inputs[i].txid}`);
+  }
+  const sourceTx = Transaction.fromPSBT(base64.decode(txs[0])).unsignedTx;
+  setArkPsbtField(arkTx, i, PrevArkTxField, sourceTx);
+}
+
 /**
  * 5. Submit transaction.
  * Coin A is ours, so we sign both its ark tx input and its checkpoint; the
@@ -156,7 +189,7 @@ const submitted = await emulator.submitTx(
  */
 const txid = Transaction.fromPSBT(base64.decode(submitted.signedArkTx)).id;
 console.log(
-  `Spent ${inputs.length} contract input(s): ${EXPLORER_URL}/tx/${txid}`,
+  `Covenant satisfied: input 0 (coin A's checkpoint) matched the pinned outpoint, spent ${inputs.length} input(s): ${EXPLORER_URL}/tx/${txid}`,
 );
 
 await wallet.dispose();
@@ -181,6 +214,7 @@ async function waitFor<T>(
   label: string,
   timeoutMs = 60_000,
 ): Promise<T[]> {
+  console.log(`Waiting for ${label}...`);
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const items = await lookup();
