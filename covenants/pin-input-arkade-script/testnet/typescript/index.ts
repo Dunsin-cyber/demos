@@ -9,6 +9,7 @@ import {
   RestArkProvider,
   RestEmulatorProvider,
   RestIndexerProvider,
+  SingleKey,
   Transaction,
 } from "@arkade-os/sdk";
 import { base64 } from "@scure/base";
@@ -26,11 +27,11 @@ const REQUIRED_COINS = 2;
  */
 const program = {
   version: 0,
-  params: ["operatorPubkey"],
+  params: ["operatorPubkey", "ownerPubkey"],
   functions: {
     pinInputArkadeScript: {
-      /** Tapscript-level signer requirement: only the operator key. */
-      tapscript: { signers: ["$operatorPubkey"] },
+      /** Signers: the operator plus a fresh per-run key, which makes this contract address unique per run. */
+      tapscript: { signers: ["$operatorPubkey", "$ownerPubkey"] },
       /** Covenant clause executed by the emulator on every spend. */
       arkadeScript: {
         asm: [0, "INSPECTINPUTARKADESCRIPTHASH", 1, "INSPECTINPUTARKADESCRIPTHASH", "EQUAL"],
@@ -57,25 +58,29 @@ const builder = await ContractBuilder.connect({
   network,
 });
 
-/** 2. Instantiate the contract. The covenant takes no params beyond the operator key. */
+/** A fresh per-run key. Adding it as a signer makes this contract address unique to this run,
+ *  so concurrent runs get separate addresses and never touch each other's coins. */
+const identity = SingleKey.fromPrivateKey(crypto.getRandomValues(new Uint8Array(32)));
+const ownerPubkey = await identity.xOnlyPublicKey();
+
+/** 2. Instantiate the contract, binding the operator key and this run's owner key. */
 const contract = builder.contract(program, {
   operatorPubkey: builder.serverKey,
+  ownerPubkey,
 });
 
 /**
  * The covenant compares input 0 and input 1, so it needs two coins under the same contract.
  * Fund the contract twice so the demo runs end to end without a separate manual step.
  */
-/** Snapshot existing coins first: this address is shared, so only spend the coins this run funds. */
-const existing = new Set((await contract.getUtxos()).map((u) => `${u.txid}:${u.vout}`));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 
-/** 3. Wait until this run's two coins land, then spend them together. */
+/** 3. Wait until both coins land, then spend them together. */
 const contractInputs = await waitFor(async () => {
-  const mine = (await contract.getUtxos()).filter((u) => !existing.has(`${u.txid}:${u.vout}`));
-  return mine.length >= REQUIRED_COINS ? mine.slice(0, REQUIRED_COINS) : [];
-}, `this run's ${REQUIRED_COINS} coins from the faucet`);
+  const utxos = await contract.getUtxos();
+  return utxos.length >= REQUIRED_COINS ? utxos.slice(0, REQUIRED_COINS) : [];
+}, `${REQUIRED_COINS} coins from the faucet`);
 
 const contractBalance = contractInputs.reduce(
   (total, input) => total + BigInt(input.value),
@@ -134,13 +139,16 @@ for (let i = 0; i < inputs.length; i++) {
 }
 
 /**
- * 5. Submit transaction.
- * `pinInputArkadeScript` is signed only by the operator (`$operatorPubkey`)
- * No client identity is involved, so the unsigned transaction goes straight to the emulator
+ * 5. Sign with our per-run key, then submit.
+ * The covenant leaf needs the operator (arkd), the emulator (covenant), and our per-run key,
+ * so we sign every input and every checkpoint before handing it to the emulator.
  */
+const inputIndexes = inputs.map((_, i) => i);
+const signedArkTx = await identity.sign(arkTx, inputIndexes);
+const signedCheckpoints = await Promise.all(checkpoints.map((c) => identity.sign(c)));
 const submitted = await builder.emulator!.submitTx(
-  base64.encode(arkTx.toPSBT()),
-  checkpoints.map((c) => base64.encode(c.toPSBT())),
+  base64.encode(signedArkTx.toPSBT()),
+  signedCheckpoints.map((c) => base64.encode(c.toPSBT())),
 );
 
 /**

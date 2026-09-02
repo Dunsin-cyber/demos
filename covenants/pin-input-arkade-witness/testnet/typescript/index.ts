@@ -9,6 +9,7 @@ import {
   RestArkProvider,
   RestEmulatorProvider,
   RestIndexerProvider,
+  SingleKey,
   Transaction,
 } from "@arkade-os/sdk";
 import { base64 } from "@scure/base";
@@ -37,17 +38,17 @@ const EXPECTED_WITNESS_HASH = arkade.arkadeWitnessHash(WITNESS);
  */
 const program = {
   version: 0,
-  params: ["operatorPubkey", "hash", "expectedWitnessHash"],
+  params: ["operatorPubkey", "ownerPubkey", "hash", "expectedWitnessHash"],
   functions: {
     hashlock: {
-      /** Tapscript-level signer requirement: only the operator key. */
-      tapscript: { signers: ["$operatorPubkey"] },
+      /** Signers: the operator plus a fresh per-run key, which makes this contract address unique per run. */
+      tapscript: { signers: ["$operatorPubkey", "$ownerPubkey"] },
       /** Consumes the preimage from its witness: sha256(preimage) must equal the committed hash. */
       arkadeScript: { asm: ["SHA256", "$hash", "EQUAL"] },
     },
     pinInputArkadeWitness: {
-      /** Tapscript-level signer requirement: only the operator key. */
-      tapscript: { signers: ["$operatorPubkey"] },
+      /** Signers: the operator plus a fresh per-run key, which makes this contract address unique per run. */
+      tapscript: { signers: ["$operatorPubkey", "$ownerPubkey"] },
       /** Reads input 0's Arkade witness hash and requires it to match the pinned value. */
       arkadeScript: {
         asm: [0, "INSPECTINPUTARKADEWITNESSHASH", "$expectedWitnessHash", "EQUAL"],
@@ -74,9 +75,15 @@ const builder = await ContractBuilder.connect({
   network,
 });
 
-/** 2. Instantiate the contract, binding the hash and the expected witness hash. */
+/** A fresh per-run key. Adding it as a signer makes this contract address unique to this run,
+ *  so concurrent runs get separate addresses and never touch each other's coins. */
+const identity = SingleKey.fromPrivateKey(crypto.getRandomValues(new Uint8Array(32)));
+const ownerPubkey = await identity.xOnlyPublicKey();
+
+/** 2. Instantiate the contract, binding the owner key, the hash and the expected witness hash. */
 const contract = builder.contract(program, {
   operatorPubkey: builder.serverKey,
+  ownerPubkey,
   hash: HASH,
   expectedWitnessHash: EXPECTED_WITNESS_HASH,
 });
@@ -86,16 +93,14 @@ const contract = builder.contract(program, {
  * preimage witness) and one via the `pinInputArkadeWitness` leaf (input 1, inspects input 0).
  * Fund the contract twice so it runs end to end without a separate manual step.
  */
-/** Snapshot existing coins first: this address is shared, so only spend the coins this run funds. */
-const existing = new Set((await contract.getUtxos()).map((u) => `${u.txid}:${u.vout}`));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 
-/** 3. Wait until this run's two coins land, then spend them together. */
+/** 3. Wait until both coins land, then spend them together. */
 const contractInputs = await waitFor(async () => {
-  const mine = (await contract.getUtxos()).filter((u) => !existing.has(`${u.txid}:${u.vout}`));
-  return mine.length >= REQUIRED_COINS ? mine.slice(0, REQUIRED_COINS) : [];
-}, `this run's ${REQUIRED_COINS} coins from the faucet`);
+  const utxos = await contract.getUtxos();
+  return utxos.length >= REQUIRED_COINS ? utxos.slice(0, REQUIRED_COINS) : [];
+}, `${REQUIRED_COINS} coins from the faucet`);
 
 const contractBalance = contractInputs.reduce(
   (total, input) => total + BigInt(input.value),
@@ -160,13 +165,16 @@ for (let i = 0; i < inputs.length; i++) {
 }
 
 /**
- * 5. Submit transaction.
- * Both paths are signed only by the operator (`$operatorPubkey`)
- * No client identity is involved, so the unsigned transaction goes straight to the emulator
+ * 5. Sign with our per-run key, then submit.
+ * Both leaves need the operator (arkd), the emulator (covenant), and our per-run key, so we sign
+ * every input and every checkpoint. Input 0 also carries its preimage witness in the packet above.
  */
+const inputIndexes = inputs.map((_, i) => i);
+const signedArkTx = await identity.sign(arkTx, inputIndexes);
+const signedCheckpoints = await Promise.all(checkpoints.map((c) => identity.sign(c)));
 const submitted = await builder.emulator!.submitTx(
-  base64.encode(arkTx.toPSBT()),
-  checkpoints.map((c) => base64.encode(c.toPSBT())),
+  base64.encode(signedArkTx.toPSBT()),
+  signedCheckpoints.map((c) => base64.encode(c.toPSBT())),
 );
 
 /**
