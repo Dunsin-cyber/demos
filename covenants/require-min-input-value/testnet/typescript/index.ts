@@ -62,11 +62,15 @@ const contract = builder.contract(program, {
   minAmount: MIN_AMOUNT,
 });
 
-/** Fund the contract so the demo runs end to end without a separate manual step. */
+/** Snapshot existing coins first: this address is shared, so only spend the coin this run funds. */
+const existing = new Set((await contract.getUtxos()).map((u) => `${u.txid}:${u.vout}`));
 await fundViaFaucet(contract.address, Number(MIN_AMOUNT));
 
-/** 3. Wait for the funded coin(s) to land, then check the contract can be executed. */
-const contractInputs = await waitFor(() => contract.getUtxos(), "contract funding from the faucet");
+/** 3. Wait for this run's funded coin to land, then check the contract can be executed. */
+const contractInputs = await waitFor(async () => {
+  const mine = (await contract.getUtxos()).filter((u) => !existing.has(`${u.txid}:${u.vout}`));
+  return mine.length > 0 ? mine.slice(0, 1) : [];
+}, "this run's funded coin");
 
 const contractBalance = contractInputs.reduce(
   (total, input) => total + BigInt(input.value),

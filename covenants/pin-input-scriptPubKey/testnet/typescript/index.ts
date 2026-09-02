@@ -9,7 +9,7 @@ import {
   Extension,
   InMemoryContractRepository,
   InMemoryWalletRepository,
-  MnemonicIdentity,
+  SeedIdentity,
   RestArkProvider,
   RestEmulatorProvider,
   RestIndexerProvider,
@@ -21,10 +21,6 @@ import { EventSource } from "eventsource";
 
 const { Arkade: ContractBuilder } = arkade;
 type Program = typeof arkade.Program;
-
-// Never hold real funds here, for test demo only.
-const SEED_PHRASE =
-  "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" as const;
 
 const DEPOSIT_AMOUNT = 1000;
 const PINNED_INPUT_INDEX = 0;
@@ -65,7 +61,8 @@ const FAUCET_URL = "https://faucet.mutinynet.arkade.sh/faucet" as const;
 (globalThis as any).EventSource = EventSource;
 
 /** 1. Create a wallet to own coin A, and a builder with cosigner, indexer and emulator. */
-const identity = MnemonicIdentity.fromMnemonic(SEED_PHRASE, { isMainnet: false });
+/** Fresh random identity per run, so this run's coin A is isolated from other runs on the demo. */
+const identity = SeedIdentity.fromSeed(crypto.getRandomValues(new Uint8Array(64)), { isMainnet: false });
 const operator = new RestArkProvider(OPERATOR_URL);
 const indexer = new RestIndexerProvider(OPERATOR_URL);
 const emulator = new RestEmulatorProvider(EMULATOR_URL);

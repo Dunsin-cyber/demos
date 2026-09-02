@@ -69,14 +69,16 @@ const contract = builder.contract(program, {
  * The whole point is that ONE covenant guards coins at different input positions, so we spend two
  * coins from the contract. Fund it twice so the demo runs end to end without a separate manual step.
  */
+/** Snapshot existing coins first: this address is shared, so only spend the coins this run funds. */
+const existing = new Set((await contract.getUtxos()).map((u) => `${u.txid}:${u.vout}`));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 await fundViaFaucet(contract.address, Number(DEPOSIT_AMOUNT));
 
-/** 3. Wait until both coins land, then spend them together. */
+/** 3. Wait until this run's two coins land, then spend them together. */
 const contractInputs = await waitFor(async () => {
-  const utxos = await contract.getUtxos();
-  return utxos.length >= REQUIRED_COINS ? utxos : [];
-}, `${REQUIRED_COINS} coins from the faucet`);
+  const mine = (await contract.getUtxos()).filter((u) => !existing.has(`${u.txid}:${u.vout}`));
+  return mine.length >= REQUIRED_COINS ? mine.slice(0, REQUIRED_COINS) : [];
+}, `this run's ${REQUIRED_COINS} coins from the faucet`);
 
 const contractBalance = contractInputs.reduce(
   (total, input) => total + BigInt(input.value),
