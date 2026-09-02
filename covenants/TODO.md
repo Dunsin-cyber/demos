@@ -60,7 +60,7 @@
     - [ ] rust
     - [ ] .net
 
-- [-] recursive covenant: pin input's arkade script `OP_INSPECTINPUTARKADESCRIPTHASH`
+- [-] pin input's arkade script `OP_INSPECTINPUTARKADESCRIPTHASH`
   - [ ] mainnet
     - [ ] typescript
     - [ ] go

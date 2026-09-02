@@ -22,6 +22,7 @@ import { EventSource } from "eventsource";
 const { Arkade: ContractBuilder } = arkade;
 type Program = typeof arkade.Program;
 
+// Never hold real funds here, for test demo only.
 const SEED_PHRASE =
   "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about" as const;
 
@@ -129,7 +130,7 @@ const inputs = [
 
 /** No output rule here, so the whole value goes back to the wallet in one output. */
 const totalValue = BigInt(coinA.value) + BigInt(guardCoin.value);
-const outputs: any[] = [{ script: walletPkScript, amount: totalValue }];
+const outputs = [{ script: walletPkScript, amount: totalValue }];
 
 /**
  * Construct Arkade extension envelope.

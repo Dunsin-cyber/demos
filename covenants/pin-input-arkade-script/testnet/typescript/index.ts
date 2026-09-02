@@ -20,10 +20,9 @@ const DEPOSIT_AMOUNT = 1_000n;
 const REQUIRED_COINS = 2;
 
 /**
- * A recursive covenant, `pinInputArkadeScript`, that only lets the operator move funds when
- * input 0 and input 1 are guarded by the SAME arkade script (their script hashes match).
- * Because both coins carry this very covenant, it enforces that its coins only ever move
- * alongside other coins under the identical covenant.
+ * A covenant, `pinInputArkadeScript`, that only lets the operator move funds when input 0 and
+ * input 1 are guarded by the SAME arkade script (their script hashes match). It constrains its
+ * co-spent siblings, not its own future outputs, so it is not a true recursive covenant.
  */
 const program = {
   version: 0,

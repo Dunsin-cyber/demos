@@ -179,6 +179,9 @@ console.log(
 function encodeWitness(items: Uint8Array[]): Uint8Array {
   const parts: number[] = [items.length];
   for (const item of items) {
+    if (item.length > 252) {
+      throw new Error(`encodeWitness: item too long (${item.length} bytes); use a multi-byte varint`);
+    }
     parts.push(item.length);
     for (const b of item) parts.push(b);
   }

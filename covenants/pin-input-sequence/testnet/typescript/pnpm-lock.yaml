@@ -9,19 +9,16 @@ importers:
   .:
     dependencies:
       '@arkade-os/sdk':
-        specifier: ^0.4.66
-        version: 0.4.66
+        specifier: ^0.4.67
+        version: 0.4.67
       '@scure/base':
         specifier: 2.3.0
         version: 2.3.0
-      eventsource:
-        specifier: ^4.1.1
-        version: 4.1.1
 
 packages:
 
-  '@arkade-os/sdk@0.4.66':
-    resolution: {integrity: sha512-wSpu22ypIse1YHdPjnOx1XWf7IMi/j5RuZpUHa2QclHs1YkzerS5HqwXTeusiynd3s0V/R9/K7ZZz7yRwkcBhg==}
+  '@arkade-os/sdk@0.4.67':
+    resolution: {integrity: sha512-fgX0WtzNj6ncCZmzHdjVxM/XJvFSZrojalOaunfKwYtcU+RJco3mPaiVBl2RogrRsQCc8kqraE3fisaM0LAxZA==}
     engines: {node: '>=22.12.0 <27'}
     peerDependencies:
       '@react-native-async-storage/async-storage': '>=1.0.0'
@@ -132,14 +129,6 @@ packages:
     resolution: {integrity: sha512-O1htyufFTYy3EO0JkHg2CLykdXEtV2ssqw47Gq9A0WByp662xpJnMEB9m43LZjsSDjIAOozWRExlFQk2hlV1XQ==}
     engines: {node: '>=4.5.0'}
 
-  eventsource-parser@3.1.1:
-    resolution: {integrity: sha512-EKN1vKAMcZ8MlYMpaNuxN6R9yakzH6uajHcHVTqWJzvu5pWw9DyhbP35HH8MVBQ+dZjAfDxk+A8NiR9KWaXiyQ==}
-    engines: {node: '>=18.0.0'}
-
-  eventsource@4.1.1:
-    resolution: {integrity: sha512-D6bTRWh6KahHTK/m4WnjPQyEinNPf9eFLEZSEoj7d6fTibspnAVYfzHvirL7u/aoX5d9YYfIkBVAhmigUELk9w==}
-    engines: {node: '>=20.0.0'}
-
   isomorphic-ws@5.0.0:
     resolution: {integrity: sha512-muId7Zzn9ywDsyXgTIafTry2sV3nySZeUDe6YedVd1Hvuuep5AsIlqK+XefWpYTyJG5e503F2xIuT2lcU6rCSw==}
     peerDependencies:
@@ -181,7 +170,7 @@ packages:
 
 snapshots:
 
-  '@arkade-os/sdk@0.4.66':
+  '@arkade-os/sdk@0.4.67':
     dependencies:
       '@bitcoinerlab/descriptors-scure': 3.1.7
       '@marcbachmann/cel-js': 8.0.0
@@ -271,12 +260,6 @@ snapshots:
       micro-packed: 0.8.0
 
   bip68@1.0.4: {}
-
-  eventsource-parser@3.1.1: {}
-
-  eventsource@4.1.1:
-    dependencies:
-      eventsource-parser: 3.1.1
 
   isomorphic-ws@5.0.0(ws@8.21.3):
     dependencies:
